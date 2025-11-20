@@ -2,11 +2,7 @@ name: Manaba to Google Tasks Sync
 
 on:
   schedule:
-    # 日本時間の朝7時 (UTC 22:00) に毎日実行
-    # ※GitHub ActionsはUTC基準なので、JST-9時間で設定します
     - cron: '0 22 * * *'
-  
-  # 手動実行ボタンも有効化 (テスト用)
   workflow_dispatch:
 
 jobs:
@@ -34,10 +30,36 @@ jobs:
         MANABA_PASSWORD: ${{ secrets.MANABA_PASSWORD }}
       run: python src/fetch_manaba.py
 
+    # ★修正: エラー時にスクリーンショットをアップロードする設定を追加
+    - name: Upload Error Screenshot
+      if: failure() || success()  # 成功しても失敗しても実行（デバッグのため）
+      uses: actions/upload-artifact@v4
+      with:
+        name: debug-screenshots
+        path: "*.png"
+        if-no-files-found: ignore
+
     - name: Register to Google Tasks
       env:
         GOOGLE_TASK_LIST_ID: ${{ secrets.GOOGLE_TASK_LIST_ID }}
         GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
-        # credentialsはtokenがあれば基本不要ですが、念のため
         GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
       run: python src/register_tasks.py
+```
+
+---
+
+### Step 3: `src/register_tasks.py` のデバッグ追加
+
+IDが読み込めているか確認するログを追加します（`main`関数の最初）。
+
+```python
+# (前略)
+def main():
+    # ★修正: デバッグログを追加
+    print(f"DEBUG CHECK: ID Setting Status = {'OK' if TASK_LIST_ID else 'None/Empty'}")
+    
+    if not TASK_LIST_ID:
+        print("エラー: setting.env に GOOGLE_TASK_LIST_ID が設定されていません。")
+        return
+# (後略)

@@ -16,8 +16,8 @@ PASSWORD = os.getenv("MANABA_PASSWORD")
 
 async def run():
     async with async_playwright() as p:
-        # 動作確認完了後は headless=True にしてOKです（今回はFalseのまま）
-        browser = await p.chromium.launch(headless=True)
+        # 動作確認のため headless=True (本番設定)
+        browser = await p.chromium.launch(headless=True, args=["--no-sandbox", "--disable-setuid-sandbox"])
         context = await browser.new_context()
         page = await context.new_page()
 
@@ -35,11 +35,18 @@ async def run():
             print(f"⚠️ ログイン処理: {e}")
 
         # --- 未提出課題一覧へ ---
-        target_button = page.locator("img[alt='未提出の課題一覧']")
+        print("🚀 「未提出の課題一覧」ボタンを探しています...")
         
         tasks = []
-        if await target_button.count() > 0:
-            print("🚀 未提出一覧ページへ移動します...")
+        
+        button_selector = "img[alt='未提出の課題一覧']"
+        target_button = page.locator(button_selector)
+        
+        try:
+            # ボタンが表示されるまで最大15秒待つ
+            await page.wait_for_selector(button_selector, state="visible", timeout=15000)
+            
+            print("✅ ボタンを発見！クリックして一覧ページへ飛びます。")
             await target_button.click()
             await page.wait_for_load_state("domcontentloaded")
 
@@ -72,21 +79,17 @@ async def run():
                     deadline_text = await cells[4].inner_text()
                     deadline_text = deadline_text.strip()
 
-                    # 締切がない場合はスキップ（または無期限として扱う）
+                    # 締切がない場合はスキップ
                     if not deadline_text:
                         continue
 
-                    # 過去の課題を除外するロジック（YYYY-MM-DD HH:MM 形式を想定）
+                    # 過去の課題を除外するロジック
                     try:
                         deadline_dt = datetime.strptime(deadline_text, "%Y-%m-%d %H:%M")
                         if deadline_dt < datetime.now():
-                            # 期限切れはスキップ
                             continue
-                        
-                        # Google Tasks用にISO形式文字列に変換
                         deadline_iso = deadline_dt.isoformat()
                     except ValueError:
-                        # 日付形式が違う場合はそのまま入れるか、エラーにする
                         deadline_iso = deadline_text
 
                     # データの整形
@@ -99,23 +102,23 @@ async def run():
 
                 except Exception as e:
                     print(f"行解析エラー: {e}")
-        
-        else:
-            print("✅ 未提出課題はありません！")
+
+        except Exception as e:
+            print(f"❌ エラー: ボタンが見つからないか、タイムアウトしました: {e}")
+            # エラー時はtasksは空のまま進む
 
         # --- 結果出力 ---
         print("\n" + "="*30)
         print(f"🎉 抽出された有効な課題: {len(tasks)} 件")
-        # JSON形式で綺麗に出力（これを次のステップでGoogle APIに投げます）
         print(json.dumps(tasks, indent=4, ensure_ascii=False))
         print("="*30)
 
-        # --- ★追加: ファイルに保存しておく（開発用）★ ---
+        # --- ファイル保存 ---
         output_path = current_dir.parent / "tasks.json"
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(tasks, f, indent=4, ensure_ascii=False)
         print(f"💾 データを保存しました: {output_path}")
-        
+
         await browser.close()
 
 if __name__ == "__main__":

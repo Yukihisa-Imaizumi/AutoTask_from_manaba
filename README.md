@@ -1,15 +1,15 @@
-AutoTask from manaba 📚➡️✅
+# AutoTask from manaba 📚➡️✅
 
 筑波大学のLMS「manaba」の未提出課題を自動で取得し、Google Tasks（ToDoリスト）に同期するツールです。
 毎朝自動で実行され、新しい課題があれば自動的にタスクに追加されます。
 
-🌟 機能
+## 🌟 機能
 
-自動ログイン: 統一認証システム経由でmanabaにアクセスします。
+**自動ログイン**: 統一認証システム経由でmanabaにアクセスします。
 
-未提出チェック: 「未提出の課題一覧」から情報を取得します。
+**未提出チェック**: 「未提出の課題一覧」から情報を取得します。
 
-Google Tasks同期:
+**Google Tasks同期**:
 
 [コース名] 課題名 の形式でタスクを追加。
 
@@ -17,9 +17,9 @@ Google Tasks同期:
 
 課題のURLをメモ欄に追加。
 
-重複防止: すでに追加済みの課題は追加しません。
+**重複防止**: すでに追加済みの課題は追加しません。
 
-🛠 前提条件
+## 🛠 前提条件
 
 GitHubアカウント
 
@@ -27,9 +27,9 @@ Googleアカウント
 
 Python環境（初期設定でのみ使用）
 
-🚀 セットアップ手順
+## 🚀 セットアップ手順
 
-Step 1: リポジトリの準備
+### Step 1: リポジトリの準備
 
 このリポジトリを自分のGitHubアカウントに Fork（コピー）してください。
 その後、自分のPCにクローンします。
@@ -42,7 +42,7 @@ playwright install
 
 (※ requirements.txt がない場合は手動インストール: pip install playwright python-dotenv google-api-python-client google-auth-httplib2 google-auth-oauthlib requests)
 
-Step 2: Google Cloudの設定
+### Step 2: Google Cloudの設定
 
 Google Tasks APIを使えるようにします。
 
@@ -56,7 +56,7 @@ Google Cloud Console にアクセスし、新しいプロジェクトを作成�
 
 JSONファイルをダウンロードして credentials.json にリネームし、プロジェクトのルートフォルダに置く。
 
-Step 3: 認証トークンの生成 (ローカル実行)
+### Step 3: 認証トークンの生成 (ローカル実行)
 
 一度自分のPCで実行して、Googleへのログイン認証を行います。
 
@@ -75,7 +75,7 @@ python src/register_tasks.py
 ブラウザが開くのでログインして許可。成功すると token.json が生成されます。
 (この際、コンソールにタスクリストの一覧とIDが表示されるので、追加したいリストのIDを控えてください)
 
-Step 4: GitHub Secretsの設定
+### Step 4: GitHub Secretsの設定
 
 GitHubリポジトリの Settings > Secrets and variables > Actions に行き、以下の5つを登録します。
 
@@ -103,18 +103,18 @@ GOOGLE_TOKEN_JSON
 
 token.json の中身すべて
 
-Step 5: 自動実行の開始
+### Step 5: 自動実行の開始
 
 GitHub Actionsタブを開き、ワークフローが有効になっているか確認してください。
 設定完了後、毎日 日本時間の朝7時 に自動実行されます。
 
-⚠️ 注意事項
+## ⚠️ 注意事項
 
 大学のパスワードやAPIトークンは、必ず GitHub Secrets に登録してください。コードに直接書いたり、.envファイルをGitHubにアップロードしないでください。
 
 manabaの仕様変更により動かなくなる可能性があります。
 
-🐛 トラブルシューティング
+## 🐛 トラブルシューティング
 
 ログインエラー: 大学のパスワード変更時は、Secretsの MANABA_PASSWORD も更新してください。
 

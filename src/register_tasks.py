@@ -22,20 +22,33 @@ TASKS_DATA_FILE = base_dir / 'tasks.json'
 TASK_LIST_ID = os.getenv("GOOGLE_TASK_LIST_ID")
 
 def get_service():
-    """Google API 認証サービス"""
+    """Google API 認証サービス (ファイル または 環境変数から)"""
     creds = None
+    
+    # 1. ローカルファイルの確認
     if os.path.exists(TOKEN_FILE):
         creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
     
+    # 2. 環境変数 (GitHub Secrets) の確認
+    elif os.getenv("GOOGLE_TOKEN_JSON"):
+        try:
+            # JSON文字列を辞書に変換して認証情報を復元
+            info = json.loads(os.getenv("GOOGLE_TOKEN_JSON"))
+            creds = Credentials.from_authorized_user_info(info, SCOPES)
+            print("🔑 環境変数から認証情報を読み込みました。")
+        except Exception as e:
+            print(f"環境変数の読み込みエラー: {e}")
+
+    # トークンの有効性チェック
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
-            except Exception:
-                print("トークン期限切れ。再認証が必要です（ローカルで実行してください）")
+            except Exception as e:
+                print(f"トークン更新エラー: {e}")
                 return None
         else:
-            print("トークンが見つかりません（ローカルで実行してください）")
+            print("有効なトークンが見つかりません。ローカルで再認証してください。")
             return None
 
     return build('tasks', 'v1', credentials=creds)
@@ -59,8 +72,12 @@ def convert_to_rfc3339(date_str):
         return None
 
 def main():
+    # ★ここがデバッグ用に追加した部分です★
+    print(f"DEBUG: TASK_LIST_ID Status = {'OK (Found)' if TASK_LIST_ID else 'MISSING (None)'}")
+    
     if not TASK_LIST_ID:
         print("エラー: setting.env に GOOGLE_TASK_LIST_ID が設定されていません。")
+        print("GitHub Secrets に 'GOOGLE_TASK_LIST_ID' が正しく登録されているか確認してください。")
         return
 
     # 1. tasks.json の読み込み
@@ -134,7 +151,6 @@ def main():
 
     print("="*30)
     print(f"🎉 処理完了！ {added_count} 件のタスクを新規追加しました。")
-    print("Google Calendar (Tasksカレンダー) を確認してください。")
 
 if __name__ == '__main__':
     main()

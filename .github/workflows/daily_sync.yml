@@ -45,9 +45,6 @@ jobs:
         GOOGLE_TOKEN_JSON: ${{ secrets.GOOGLE_TOKEN_JSON }}
         GOOGLE_CREDENTIALS_JSON: ${{ secrets.GOOGLE_CREDENTIALS_JSON }}
       run: python src/register_tasks.py
-```
-
----
 
 ### Step 3: `src/register_tasks.py` のデバッグ追加
 

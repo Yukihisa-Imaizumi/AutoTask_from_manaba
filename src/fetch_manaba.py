@@ -1,87 +1,121 @@
 import asyncio
 import os
+import json
+from pathlib import Path
+from datetime import datetime
 from dotenv import load_dotenv
 from playwright.async_api import async_playwright
 
-# .envファイルからログイン情報を読み込む
-load_dotenv()
+# --- 設定読み込み ---
+current_dir = Path(__file__).resolve().parent
+env_path = current_dir.parent / "setting.env"
+load_dotenv(dotenv_path=env_path)
+
 USERNAME = os.getenv("MANABA_USERNAME")
 PASSWORD = os.getenv("MANABA_PASSWORD")
 
-if not USERNAME or not PASSWORD:
-    print("エラー: .envファイルに MANABA_USERNAME と MANABA_PASSWORD を設定してください")
-    exit()
-
 async def run():
     async with async_playwright() as p:
-        # headless=False にするとブラウザが立ち上がるのが見えます（デバッグ用）
-        # GitHub Actionsでは True にします
-        browser = await p.chromium.launch(headless=False, slow_mo=500)
-        page = await browser.new_page()
+        # 動作確認完了後は headless=True にしてOKです（今回はFalseのまま）
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context()
+        page = await context.new_page()
 
-        print("🔄 manabaにアクセス中...")
-        # 筑波大manabaのトップページへ
+        print("🔄 manabaにログイン中...")
         await page.goto("https://manaba.tsukuba.ac.jp/")
 
-        # 「ログイン」ボタンがある場合をクリック（manabaのトップにある場合）
-        # 既にログイン済みや、直接IdPに飛ぶ場合を考慮してtry-exceptにするか、
-        # ページ遷移を待ちます。通常は統一認証へリダイレクトされます。
-        
-        # 統一認証システムの画面か確認 (URLやタイトルで判定)
+        # --- ログイン処理 ---
         try:
-            # ページが完全に読み込まれるまで待機
-            await page.wait_for_load_state("networkidle")
-            
-            print(f"TITLE: {await page.title()}")
-
-            # 統一認証の入力フォームを探して入力
-            # ※セレクタ（HTMLのIDやClass）は変更される可能性があります
-            # 一般的なname属性を探します
             if "idp" in page.url or "auth" in page.url:
-                print("🔑 統一認証画面を検出。ログインを試みます...")
-                
-                # ユーザー名入力 (name="j_username" などを想定)
-                # 多くのIdPで共通のセレクタ、もしくは placeholder や label から探す
                 await page.get_by_label("User ID").or_(page.locator("input[type='text']").first).fill(USERNAME)
-                
-                # パスワード入力
                 await page.get_by_label("Password").or_(page.locator("input[type='password']")).fill(PASSWORD)
-                
-                # ログインボタン押下 (type="submit" を探す)
                 await page.locator("button[type='submit'], input[type='submit']").click()
-                
-                # ログイン後の遷移を待機
                 await page.wait_for_load_state("networkidle")
-
         except Exception as e:
-            print(f"⚠️ ログイン処理中にエラーまたは既にログイン済み: {e}")
+            print(f"⚠️ ログイン処理: {e}")
 
-        # ログイン成功の確認（マイページにいるか？）
-        if "home" in page.url or "コース一覧" in await page.content():
-            print("✅ ログイン成功！マイページに到達しました。")
-            
-            # --- ここで課題情報の取得テスト ---
-            # manabaのマイページ右側などにある「未提出課題（リマインダ）」を取得してみる
-            # ※デザインによってセレクタが異なるため、まずはコース名一覧を取得して検証
-            
-            print("\n--- 履修コース一覧 (テスト取得) ---")
-            # コース名のリンクを取得 (一般的なmanabaの構造: .course-title a)
-            courses = page.locator(".course-title a")
-            count = await courses.count()
-            
-            for i in range(count):
-                course_name = await courses.nth(i).inner_text()
-                print(f"- {course_name}")
+        # --- 未提出課題一覧へ ---
+        target_button = page.locator("img[alt='未提出の課題一覧']")
+        
+        tasks = []
+        if await target_button.count() > 0:
+            print("🚀 未提出一覧ページへ移動します...")
+            await target_button.click()
+            await page.wait_for_load_state("domcontentloaded")
+
+            # テーブル行を取得
+            rows = await page.locator(".stdlist tr").all()
+            print(f"📊 {len(rows)-1} 件の行を解析中...")
+
+            for row in rows[1:]: # ヘッダー行スキップ
+                cells = await row.locator("td").all()
                 
-            # スクリーンショットを撮って保存（動作確認用）
-            await page.screenshot(path="manaba_result.png")
-            print("\n📷 スクリーンショットを保存しました: manaba_result.png")
+                # 列数が足りない場合はスキップ
+                if len(cells) < 5:
+                    continue
 
+                try:
+                    # 1列目: 種別（不要なら無視）
+                    # 2列目: 課題名とURL
+                    title_cell = cells[1]
+                    assignment_title = await title_cell.inner_text()
+                    assignment_title = assignment_title.strip()
+                    
+                    link = title_cell.locator("a").first
+                    url = await link.get_attribute("href") if await link.count() > 0 else ""
+
+                    # 3列目: コース名
+                    course_name = await cells[2].inner_text()
+                    course_name = course_name.strip()
+
+                    # 5列目: 締切日時
+                    deadline_text = await cells[4].inner_text()
+                    deadline_text = deadline_text.strip()
+
+                    # 締切がない場合はスキップ（または無期限として扱う）
+                    if not deadline_text:
+                        continue
+
+                    # 過去の課題を除外するロジック（YYYY-MM-DD HH:MM 形式を想定）
+                    try:
+                        deadline_dt = datetime.strptime(deadline_text, "%Y-%m-%d %H:%M")
+                        if deadline_dt < datetime.now():
+                            # 期限切れはスキップ
+                            continue
+                        
+                        # Google Tasks用にISO形式文字列に変換
+                        deadline_iso = deadline_dt.isoformat()
+                    except ValueError:
+                        # 日付形式が違う場合はそのまま入れるか、エラーにする
+                        deadline_iso = deadline_text
+
+                    # データの整形
+                    tasks.append({
+                        "course": course_name,
+                        "title": assignment_title,
+                        "deadline": deadline_iso,
+                        "url": url
+                    })
+
+                except Exception as e:
+                    print(f"行解析エラー: {e}")
+        
         else:
-            print("❌ ログインに失敗したか、ページ構造が想定と異なります。")
-            print(f"現在のURL: {page.url}")
-            await page.screenshot(path="error.png")
+            print("✅ 未提出課題はありません！")
 
+        # --- 結果出力 ---
+        print("\n" + "="*30)
+        print(f"🎉 抽出された有効な課題: {len(tasks)} 件")
+        # JSON形式で綺麗に出力（これを次のステップでGoogle APIに投げます）
+        print(json.dumps(tasks, indent=4, ensure_ascii=False))
+        print("="*30)
+
+        # --- ★追加: ファイルに保存しておく（開発用）★ ---
+        output_path = current_dir.parent / "tasks.json"
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(tasks, f, indent=4, ensure_ascii=False)
+        print(f"💾 データを保存しました: {output_path}")
+        
         await browser.close()
 
 if __name__ == "__main__":

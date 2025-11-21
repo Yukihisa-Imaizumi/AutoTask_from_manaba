@@ -22,65 +22,47 @@ TASKS_DATA_FILE = base_dir / 'tasks.json'
 TASK_LIST_ID = os.getenv("GOOGLE_TASK_LIST_ID")
 
 def get_service():
-    """Google API 認証サービス (ファイル または 環境変数から)"""
+    """Google API 認証サービス"""
     creds = None
-    
     # 1. ローカルファイルの確認
     if os.path.exists(TOKEN_FILE):
         creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
-    
     # 2. 環境変数 (GitHub Secrets) の確認
     elif os.getenv("GOOGLE_TOKEN_JSON"):
         try:
-            # JSON文字列を辞書に変換して認証情報を復元
             info = json.loads(os.getenv("GOOGLE_TOKEN_JSON"))
             creds = Credentials.from_authorized_user_info(info, SCOPES)
-            print("🔑 環境変数から認証情報を読み込みました。")
         except Exception as e:
             print(f"環境変数の読み込みエラー: {e}")
 
-    # トークンの有効性チェック
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
-            except Exception as e:
-                print(f"トークン更新エラー: {e}")
+            except Exception:
                 return None
         else:
-            print("有効なトークンが見つかりません。ローカルで再認証してください。")
             return None
-
     return build('tasks', 'v1', credentials=creds)
 
 def convert_to_rfc3339(date_str):
-    """
-    manabaの日時文字列 (YYYY-MM-DDTHH:MM:SS) を
-    Google Tasks用のRFC3339形式 (UTC) に変換する
-    """
+    """manabaの日時文字列をGoogle Tasks用の形式に変換"""
     try:
-        # manabaは日本時間 (JST) なので、Timezone情報を付与してUTCに変換
         dt_jst = datetime.fromisoformat(date_str)
-        # JST (+09:00) を設定
         jst = timezone(timedelta(hours=9))
         dt_jst = dt_jst.replace(tzinfo=jst)
-        
-        # UTCに変換して文字列化 (Zをつける)
         dt_utc = dt_jst.astimezone(timezone.utc)
         return dt_utc.strftime('%Y-%m-%dT%H:%M:%S.000Z')
     except ValueError:
         return None
 
 def main():
-    # ★ここがデバッグ用に追加した部分です★
-    print(f"DEBUG: TASK_LIST_ID Status = {'OK (Found)' if TASK_LIST_ID else 'MISSING (None)'}")
-    
+    print(f"DEBUG: TASK_LIST_ID Status = {'OK' if TASK_LIST_ID else 'None'}")
+
     if not TASK_LIST_ID:
-        print("エラー: setting.env に GOOGLE_TASK_LIST_ID が設定されていません。")
-        print("GitHub Secrets に 'GOOGLE_TASK_LIST_ID' が正しく登録されているか確認してください。")
+        print("エラー: GOOGLE_TASK_LIST_ID が設定されていません。")
         return
 
-    # 1. tasks.json の読み込み
     if not os.path.exists(TASKS_DATA_FILE):
         print("tasks.json が見つかりません。先に fetch_manaba.py を実行してください。")
         return
@@ -90,58 +72,43 @@ def main():
     
     print(f"📂 tasks.json から {len(new_tasks)} 件のデータを読み込みました。")
 
-    # 2. Google API 接続
     service = get_service()
     if not service:
+        print("Google Tasks APIへの接続に失敗しました。")
         return
 
-    # 3. 既存タスクの取得 (重複チェック用)
+    # 既存タスク取得
     print("🔍 既存のタスクを確認中...")
     existing_tasks = []
     page_token = None
     while True:
-        results = service.tasks().list(
-            tasklist=TASK_LIST_ID,
-            showCompleted=True,
-            showHidden=True,
-            maxResults=100,
-            pageToken=page_token
-        ).execute()
-        
+        results = service.tasks().list(tasklist=TASK_LIST_ID, showCompleted=True, showHidden=True, maxResults=100, pageToken=page_token).execute()
         items = results.get('items', [])
         for item in items:
             existing_tasks.append(item['title'])
-            
         page_token = results.get('nextPageToken')
-        if not page_token:
-            break
+        if not page_token: break
             
     print(f"✅ 現在登録済みのタスク数: {len(existing_tasks)}")
 
-    # 4. 新規タスクの登録
+    # 新規登録
     added_count = 0
     for item in new_tasks:
-        # タイトルを整形: [コース名] 課題名
         task_title = f"[{item['course']}] {item['title']}"
         
-        # 重複チェック
         if task_title in existing_tasks:
             print(f"  skip: {task_title} (登録済み)")
             continue
 
-        # 期限の変換
         due_date = convert_to_rfc3339(item['deadline'])
-        
-        # API用ボディ作成
         task_body = {
             'title': task_title,
-            'notes': f"{item['url']}\n(Auto added from manaba)",
+            'notes': f"{item['url']}\n(Auto added from manaba)"
         }
         
         if due_date:
             task_body['due'] = due_date
 
-        # APIリクエスト実行
         try:
             service.tasks().insert(tasklist=TASK_LIST_ID, body=task_body).execute()
             print(f"  🆕 ADD: {task_title}")

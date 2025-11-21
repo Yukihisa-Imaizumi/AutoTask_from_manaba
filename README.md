@@ -1,6 +1,6 @@
 # AutoTask from manaba 📚➡️✅
 
-筑波大学のLMS「manaba」の未提出課題を自動で取得し、Google Tasks（ToDoリスト）に同期するツールです。
+「manaba」の未提出課題を自動で取得し、Google Tasks（ToDoリスト）に同期するツールです。
 毎朝自動で実行され、新しい課題があれば自動的にタスクに追加されます。
 
 ## 🌟 機能
@@ -21,11 +21,9 @@
 
 ## 🛠 前提条件
 
-GitHubアカウント
-
-Googleアカウント
-
-Python環境（初期設定でのみ使用）
+- GitHubアカウント
+- Googleアカウント
+- Python環境（初期設定でのみ使用）
 
 ## 🚀 セットアップ手順
 
@@ -34,43 +32,63 @@ Python環境（初期設定でのみ使用）
 このリポジトリを自分のGitHubアカウントに Fork（コピー）してください。
 その後、自分のPCにクローンします。
 
+```
+#ターミナルで以下のコマンドを入力
+#YOUR_USERNAMEは自分のGithubアカウント名に変更すること
 git clone [https://github.com/Yukihisa-Imaizumi/AutoTask_from_manaba.git](https://github.com/YOUR_USERNAME/AutoTask_from_manaba.git)
 cd AutoTask_from_manaba
 pip install -r requirements.txt
 playwright install
-
+```
 
 (※ requirements.txt がない場合は手動インストール: pip install playwright python-dotenv google-api-python-client google-auth-httplib2 google-auth-oauthlib requests)
 
 ### Step 2: Google Cloudの設定
-
 Google Tasks APIを使えるようにします。
+[Google Cloud Console](https://cloud.google.com/cloud-console) にアクセスし、画面右上から「コンソール」を選択。
+![alt text](./assets/image_google_cloud.png)
 
-Google Cloud Console にアクセスし、新しいプロジェクトを作成。
+その後、画面左上からプロジェクトを作成します。
+「プロジェクトを選択」画面から「新しいプロジェクト」へ
+
+プロジェクト名は何でも構いませんが、ここではわかりやすく「manaba-tasks」としています
+
+![alt text](./assets/image_create_project.png)
+
 
 「APIとサービス」 > 「ライブラリ」 から 「Google Tasks API」 を検索して有効化。
+![alt text](./assets/image_library.png)
+![alt text](./assets/image_tasks_API.png)
 
 「OAuth同意画面」 を作成（User Typeは「外部」、テストユーザーに自分のGmailを追加）。
 
 「認証情報」 から 「OAuthクライアントID」 (デスクトップアプリ) を作成。
 
+どちらの設定もここにある↓
+![alt text](./assets/image_library.png)
+
+テストユーザーの追加↓
+![alt text](./assets/image_test_users.png)
+
 JSONファイルをダウンロードして credentials.json にリネームし、プロジェクトのルートフォルダに置く。
 
-### Step 3: 認証トークンの生成 (ローカル実行)
+JSONファイルを一度閉じてしまった場合は作成したクライアントを開いたのち、画面右下からダウンロードできる（数時間経過するとダウンロードできなくなるので注意）
+![alt text](./assets/image_json.png)
 
+### Step 3: 認証トークンの生成 (ローカル実行)
 一度自分のPCで実行して、Googleへのログイン認証を行います。
 
 プロジェクト直下に setting.env ファイルを作成。
-
+```setting.env
 MANABA_USERNAME=202XXXXXX
 MANABA_PASSWORD=your_password
 GOOGLE_TASK_LIST_ID=（Step 4で取得するので一旦空でOK）
-
+```
 
 以下のコマンドを実行して認証。
-
+```terminal
 python src/register_tasks.py
-
+```
 
 ブラウザが開くのでログインして許可。成功すると token.json が生成されます。
 (この際、コンソールにタスクリストの一覧とIDが表示されるので、追加したいリストのIDを控えてください)
@@ -84,11 +102,9 @@ Name
 Value
 
 MANABA_USERNAME
-
 学籍番号 (例: 202XXXXXX)
 
 MANABA_PASSWORD
-
 統一認証パスワード
 
 GOOGLE_TASK_LIST_ID
@@ -102,6 +118,7 @@ credentials.json の中身すべて
 GOOGLE_TOKEN_JSON
 
 token.json の中身すべて
+![alt text](./assets/image_secrets.png)
 
 ### Step 5: 自動実行の開始
 

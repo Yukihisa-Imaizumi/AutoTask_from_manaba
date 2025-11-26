@@ -56,6 +56,14 @@ def convert_to_rfc3339(date_str):
     except ValueError:
         return None
 
+def format_time_str(date_str):
+    """日時文字列から時間部分(HH:MM)だけを抜き出す"""
+    try:
+        dt = datetime.fromisoformat(date_str)
+        return dt.strftime("%H:%M")
+    except ValueError:
+        return None
+
 def main():
     print(f"DEBUG: TASK_LIST_ID Status = {'OK' if TASK_LIST_ID else 'None'}")
 
@@ -94,18 +102,27 @@ def main():
     # 新規登録
     added_count = 0
     for item in new_tasks:
-        task_title = f"[{item['course']}] {item['title']}"
+        # 時間文字列を取得 (例: "18:00")
+        time_str = format_time_str(item['deadline'])
+        
+        # タイトルに時間を含める: "[18:00] [コース名] 課題名"
+        if time_str:
+            task_title = f"[{time_str}] [{item['course']}] {item['title']}"
+        else:
+            task_title = f"[{item['course']}] {item['title']}"
         
         if task_title in existing_tasks:
             print(f"  skip: {task_title} (登録済み)")
             continue
 
         due_date = convert_to_rfc3339(item['deadline'])
+        
         task_body = {
             'title': task_title,
             'notes': f"{item['url']}\n(Auto added from manaba)"
         }
         
+        # 期限日も設定
         if due_date:
             task_body['due'] = due_date
 

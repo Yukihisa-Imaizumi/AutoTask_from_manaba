@@ -24,9 +24,11 @@ TASK_LIST_ID = os.getenv("GOOGLE_TASK_LIST_ID")
 def get_service():
     """Google API 認証サービス"""
     creds = None
+    
     # 1. ローカルファイルの確認
     if os.path.exists(TOKEN_FILE):
         creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
+    
     # 2. 環境変数 (GitHub Secrets) の確認
     elif os.getenv("GOOGLE_TOKEN_JSON"):
         try:
@@ -35,14 +37,35 @@ def get_service():
         except Exception as e:
             print(f"環境変数の読み込みエラー: {e}")
 
+    # 3. トークン有効性チェックと再認証
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             try:
                 creds.refresh(Request())
-            except Exception:
+            except Exception as e:
+                print(f"トークン更新エラー: {e}")
+                creds = None # 更新失敗時は再ログインへ
+
+        # ★再認証機能: ローカルで credentials.json があるなら新規ログインを試みる
+        if not creds and os.path.exists(CREDENTIALS_FILE):
+            try:
+                print("🌏 ブラウザを起動してGoogle認証を行います...")
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    str(CREDENTIALS_FILE), SCOPES)
+                creds = flow.run_local_server(port=0)
+                
+                # 新しいトークンを保存
+                with open(TOKEN_FILE, 'w') as token:
+                    token.write(creds.to_json())
+                print("💾 新しい token.json を保存しました。")
+            except Exception as e:
+                print(f"認証プロセスエラー: {e}")
                 return None
-        else:
+        
+        elif not creds:
+            print("❌ エラー: 有効なトークンがなく、credentials.jsonも見つかりません。")
             return None
+
     return build('tasks', 'v1', credentials=creds)
 
 def convert_to_rfc3339(date_str):
@@ -82,7 +105,7 @@ def main():
 
     service = get_service()
     if not service:
-        print("Google Tasks APIへの接続に失敗しました。")
+        print("❌ Google Tasks APIへの接続に失敗しました。")
         return
 
     # 既存タスク取得
@@ -105,7 +128,7 @@ def main():
         # 時間文字列を取得 (例: "18:00")
         time_str = format_time_str(item['deadline'])
         
-        # タイトルに時間を含める: "[18:00] [コース名] 課題名"
+        # タイトルに時間を含める
         if time_str:
             task_title = f"[{time_str}] [{item['course']}] {item['title']}"
         else:
@@ -122,7 +145,6 @@ def main():
             'notes': f"{item['url']}\n(Auto added from manaba)"
         }
         
-        # 期限日も設定
         if due_date:
             task_body['due'] = due_date
 
